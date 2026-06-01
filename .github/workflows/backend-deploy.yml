@@ -81,8 +81,11 @@ jobs:
     secrets: inherit
 
   deploy-files:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.files == 'true' || inputs.force == true
+    needs: [detect-changes, deploy-auth]
+    if: |
+      always() &&
+      (needs.detect-changes.outputs.files == 'true' || inputs.force == true) &&
+      (needs.deploy-auth.result == 'success' || needs.deploy-auth.result == 'skipped')
     uses: ./.github/workflows/_deploy-service.yml
     with:
       service: files-service
