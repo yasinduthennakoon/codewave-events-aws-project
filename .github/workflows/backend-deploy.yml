@@ -19,6 +19,10 @@ on:
         description: 'Stage to deploy'
         type: string
         default: dev
+      force:
+        description: 'Deploy all services regardless of what changed'
+        type: boolean
+        default: false
 
 jobs:
   # --- detect-changes: figures out which services were touched ---------------
@@ -60,7 +64,7 @@ jobs:
   # the first full deploy, services can deploy in any order.
   deploy-auth:
     needs: detect-changes
-    if: needs.detect-changes.outputs.auth == 'true'
+    if: needs.detect-changes.outputs.auth == 'true' || inputs.force == true
     uses: ./.github/workflows/_deploy-service.yml
     with:
       service: auth-service
@@ -69,7 +73,7 @@ jobs:
 
   deploy-notifications:
     needs: detect-changes
-    if: needs.detect-changes.outputs.notifications == 'true'
+    if: needs.detect-changes.outputs.notifications == 'true' || inputs.force == true
     uses: ./.github/workflows/_deploy-service.yml
     with:
       service: notifications-service
@@ -78,7 +82,7 @@ jobs:
 
   deploy-files:
     needs: detect-changes
-    if: needs.detect-changes.outputs.files == 'true'
+    if: needs.detect-changes.outputs.files == 'true' || inputs.force == true
     uses: ./.github/workflows/_deploy-service.yml
     with:
       service: files-service
@@ -89,7 +93,7 @@ jobs:
     needs: [detect-changes, deploy-auth]
     if: |
       always() &&
-      needs.detect-changes.outputs.events == 'true' &&
+      (needs.detect-changes.outputs.events == 'true' || inputs.force == true) &&
       (needs.deploy-auth.result == 'success' || needs.deploy-auth.result == 'skipped')
     uses: ./.github/workflows/_deploy-service.yml
     with:
@@ -101,7 +105,7 @@ jobs:
     needs: [detect-changes, deploy-auth, deploy-notifications]
     if: |
       always() &&
-      needs.detect-changes.outputs.registrations == 'true' &&
+      (needs.detect-changes.outputs.registrations == 'true' || inputs.force == true) &&
       (needs.deploy-auth.result == 'success'           || needs.deploy-auth.result == 'skipped') &&
       (needs.deploy-notifications.result == 'success'  || needs.deploy-notifications.result == 'skipped')
     uses: ./.github/workflows/_deploy-service.yml
