@@ -1,0 +1,177 @@
+# ============================================================================
+# auth-service/serverless.yml
+# ----------------------------------------------------------------------------
+# This stack owns:
+#   - the Cognito User Pool (with email confirmation enabled)
+#   - the Cognito App Client (configured for USER_PASSWORD_AUTH)
+#   - the HTTP API (the same API id is reused by other services? NO --
+#       each service has its OWN HTTP API for true microservice independence)
+#   - three public endpoints: /auth/register, /auth/confirm, /auth/login
+#   - SSM parameters that publish the Cognito IDs/ARNs for other services
+# ============================================================================
+service: cloudwave-auth
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ap-southeast-1
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 10
+  # Pretty log lines for CloudWatch
+  logRetentionInDays: 14
+
+  # Environment variables available inside every handler.
+  environment:
+    STAGE: ${self:provider.stage}
+    USER_POOL_ID: !Ref CognitoUserPool
+    USER_POOL_CLIENT_ID: !Ref CognitoUserPoolClient
+
+  # IAM: least-privilege. We only need to call Cognito admin/user APIs here.
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - cognito-idp:SignUp
+            - cognito-idp:ConfirmSignUp
+            - cognito-idp:InitiateAuth
+            - cognito-idp:ResendConfirmationCode
+          # In production scope this to the specific User Pool ARN.
+          Resource: '*'
+
+  # HTTP API CORS — wide open for demo.
+  httpApi:
+    cors:
+      allowedOrigins:
+        - '*'
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+
+# ----------------------------------------------------------------------------
+# Lambda functions
+# ----------------------------------------------------------------------------
+functions:
+  register:
+    handler: handlers/register.handler
+    description: Sign a new user up in Cognito (sends confirmation email)
+    events:
+      - httpApi:
+          method: POST
+          path: /auth/register
+
+  confirm:
+    handler: handlers/confirm.handler
+    description: Confirm sign-up with the 6-digit code Cognito emailed
+    events:
+      - httpApi:
+          method: POST
+          path: /auth/confirm
+
+  login:
+    handler: handlers/login.handler
+    description: Exchange username/password for Cognito JWTs
+    events:
+      - httpApi:
+          method: POST
+          path: /auth/login
+
+# ----------------------------------------------------------------------------
+# CloudFormation resources we own
+# ----------------------------------------------------------------------------
+resources:
+  Resources:
+
+    # --- Cognito User Pool ---------------------------------------------------
+    # The directory of users. Email is the username & is auto-verified
+    # via a 6-digit code sent during sign-up.
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: cloudwave-users-${self:provider.stage}
+        UsernameAttributes:
+          - email                          # users sign in with email
+        AutoVerifiedAttributes:
+          - email                          # Cognito sends the verification email
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireLowercase: true
+            RequireUppercase: false
+            RequireNumbers: true
+            RequireSymbols: false
+        Schema:
+          - Name: email
+            AttributeDataType: String
+            Required: true
+            Mutable: true
+
+    # --- Cognito App Client --------------------------------------------------
+    # The "application" that's allowed to talk to the user pool.
+    # No client secret because we call from the browser (public client).
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: cloudwave-web-${self:provider.stage}
+        UserPoolId: !Ref CognitoUserPool
+        GenerateSecret: false              # public SPA — no secret
+        ExplicitAuthFlows:
+          - ALLOW_USER_PASSWORD_AUTH       # username+password login
+          - ALLOW_REFRESH_TOKEN_AUTH       # use the refresh token to renew
+        PreventUserExistenceErrors: ENABLED
+        AccessTokenValidity: 1             # hours
+        IdTokenValidity: 1
+        RefreshTokenValidity: 30           # days
+        TokenValidityUnits:
+          AccessToken: hours
+          IdToken: hours
+          RefreshToken: days
+
+    # --- SSM Parameters: publish our IDs/ARNs for other services -----------
+    # Other microservices read these at deploy time via ${ssm:/path}.
+    SsmUserPoolId:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /cloudwave/${self:provider.stage}/cognito/userPoolId
+        Type: String
+        Value: !Ref CognitoUserPool
+
+    SsmUserPoolArn:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /cloudwave/${self:provider.stage}/cognito/userPoolArn
+        Type: String
+        Value: !GetAtt CognitoUserPool.Arn
+
+    SsmUserPoolClientId:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /cloudwave/${self:provider.stage}/cognito/clientId
+        Type: String
+        Value: !Ref CognitoUserPoolClient
+
+  Outputs:
+    UserPoolId:
+      Value: !Ref CognitoUserPool
+    UserPoolClientId:
+      Value: !Ref CognitoUserPoolClient
+
+# ----------------------------------------------------------------------------
+# Packaging — include the shared helpers and exclude the rest of the repo.
+# ----------------------------------------------------------------------------
+package:
+  patterns:
+    - '!**'
+    - 'handlers/**'
+    - '../../shared/**'
+    - 'node_modules/**'
+    - 'package.json'

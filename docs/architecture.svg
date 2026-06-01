@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 720" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1 L8 5 L2 9" fill="none" stroke="#555" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .title  { font-size: 14px; font-weight: 600; fill: #1f2937; }
+      .sub    { font-size: 12px; fill: #6b7280; }
+      .arrow  { stroke: #6b7280; stroke-width: 1.5; fill: none; }
+      .leader { stroke: #9ca3af; stroke-width: 0.8; fill: none; stroke-dasharray: 4 3; }
+      .layer  { stroke: #d1d5db; stroke-width: 0.5; }
+    </style>
+  </defs>
+
+  <!-- Browser -->
+  <rect x="350" y="30" width="200" height="50" rx="8" fill="#f3f4f6" class="layer"/>
+  <text x="450" y="50" text-anchor="middle" class="title">Browser</text>
+  <text x="450" y="68" text-anchor="middle" class="sub">React + Vite SPA</text>
+
+  <line x1="400" y1="80" x2="200" y2="120" class="arrow" marker-end="url(#arrow)"/>
+  <line x1="500" y1="80" x2="650" y2="120" class="arrow" marker-end="url(#arrow)"/>
+
+  <!-- Cognito -->
+  <rect x="60" y="120" width="240" height="50" rx="8" fill="#ede9fe" stroke="#7c3aed" class="layer"/>
+  <text x="180" y="142" text-anchor="middle" class="title" fill="#5b21b6">Cognito User Pool</text>
+  <text x="180" y="160" text-anchor="middle" class="sub" fill="#6d28d9">JWT issuer + register/confirm/login</text>
+
+  <!-- HTTP API Gateway -->
+  <rect x="360" y="120" width="480" height="50" rx="8" fill="#ccfbf1" stroke="#0d9488" class="layer"/>
+  <text x="600" y="142" text-anchor="middle" class="title" fill="#0f766e">HTTP API Gateway (×5)</text>
+  <text x="600" y="160" text-anchor="middle" class="sub" fill="#0d9488">JWT-validated by Cognito authorizer · one per microservice</text>
+
+  <line x1="300" y1="145" x2="358" y2="145" class="leader"/>
+  <text x="329" y="138" text-anchor="middle" class="sub">JWKS</text>
+
+  <line x1="600" y1="170" x2="600" y2="210" class="arrow" marker-end="url(#arrow)"/>
+
+  <!-- Lambda tier - row 1 -->
+  <g>
+    <rect x="80" y="220" width="220" height="65" rx="8" fill="#ccfbf1" stroke="#0d9488" class="layer"/>
+    <text x="190" y="244" text-anchor="middle" class="title" fill="#0f766e">auth-service</text>
+    <text x="190" y="262" text-anchor="middle" class="sub" fill="#0d9488">Cognito SignUp / Confirm /</text>
+    <text x="190" y="278" text-anchor="middle" class="sub" fill="#0d9488">InitiateAuth</text>
+
+    <rect x="340" y="220" width="220" height="65" rx="8" fill="#ccfbf1" stroke="#0d9488" class="layer"/>
+    <text x="450" y="244" text-anchor="middle" class="title" fill="#0f766e">events-service</text>
+    <text x="450" y="262" text-anchor="middle" class="sub" fill="#0d9488">GET/POST/PUT/DELETE /events</text>
+    <text x="450" y="278" text-anchor="middle" class="sub" fill="#0d9488">Mongo CRUD</text>
+
+    <rect x="600" y="220" width="220" height="65" rx="8" fill="#ccfbf1" stroke="#0d9488" class="layer"/>
+    <text x="710" y="244" text-anchor="middle" class="title" fill="#0f766e">registrations-service</text>
+    <text x="710" y="262" text-anchor="middle" class="sub" fill="#0d9488">POST /events/&#123;id&#125;/register</text>
+    <text x="710" y="278" text-anchor="middle" class="sub" fill="#0d9488">Mongo write + SQS produce</text>
+  </g>
+
+  <!-- Lambda tier - row 2 -->
+  <g>
+    <rect x="220" y="310" width="220" height="65" rx="8" fill="#ccfbf1" stroke="#0d9488" class="layer"/>
+    <text x="330" y="334" text-anchor="middle" class="title" fill="#0f766e">files-service</text>
+    <text x="330" y="352" text-anchor="middle" class="sub" fill="#0d9488">POST /files/presigned-url</text>
+    <text x="330" y="368" text-anchor="middle" class="sub" fill="#0d9488">S3 + CloudFront owner</text>
+
+    <rect x="460" y="310" width="220" height="65" rx="8" fill="#fef3c7" stroke="#d97706" class="layer"/>
+    <text x="570" y="334" text-anchor="middle" class="title" fill="#92400e">notifications-service</text>
+    <text x="570" y="352" text-anchor="middle" class="sub" fill="#b45309">SQS consumer (registrations)</text>
+    <text x="570" y="368" text-anchor="middle" class="sub" fill="#b45309">EventBridge daily reminders</text>
+  </g>
+
+  <!-- Connections lambdas -> backing services -->
+  <line x1="190" y1="285" x2="120" y2="450" class="arrow" marker-end="url(#arrow)" opacity="0.55"/>
+  <line x1="450" y1="285" x2="120" y2="450" class="arrow" marker-end="url(#arrow)" opacity="0.55"/>
+  <line x1="710" y1="285" x2="120" y2="450" class="arrow" marker-end="url(#arrow)" opacity="0.55"/>
+
+  <line x1="330" y1="375" x2="330" y2="450" class="arrow" marker-end="url(#arrow)" opacity="0.7"/>
+  <text x="345" y="415" class="sub">S3 PUT URL</text>
+
+  <line x1="710" y1="285" x2="700" y2="450" class="arrow" marker-end="url(#arrow)" opacity="0.85"/>
+  <text x="725" y="380" class="sub">SendMessage</text>
+
+  <line x1="700" y1="450" x2="610" y2="375" class="arrow" marker-end="url(#arrow)" opacity="0.85"/>
+  <text x="640" y="430" class="sub">trigger</text>
+
+  <line x1="855" y1="455" x2="660" y2="375" class="arrow" marker-end="url(#arrow)" opacity="0.85"/>
+  <text x="830" y="430" class="sub">schedule</text>
+
+  <line x1="510" y1="375" x2="475" y2="450" class="arrow" marker-end="url(#arrow)" opacity="0.85"/>
+  <text x="445" y="430" text-anchor="end" class="sub">SES SendEmail</text>
+
+  <!-- Backing services -->
+  <rect x="40" y="450" width="160" height="65" rx="8" fill="#fce7f3" stroke="#db2777" class="layer"/>
+  <text x="120" y="475" text-anchor="middle" class="title" fill="#9d174d">MongoDB Atlas</text>
+  <text x="120" y="495" text-anchor="middle" class="sub" fill="#be185d">events + registrations</text>
+
+  <rect x="220" y="450" width="180" height="65" rx="8" fill="#fce7f3" stroke="#db2777" class="layer"/>
+  <text x="310" y="475" text-anchor="middle" class="title" fill="#9d174d">S3 + CloudFront</text>
+  <text x="310" y="495" text-anchor="middle" class="sub" fill="#be185d">Banner uploads (CDN delivery)</text>
+
+  <rect x="420" y="450" width="160" height="65" rx="8" fill="#fed7aa" stroke="#ea580c" class="layer"/>
+  <text x="500" y="475" text-anchor="middle" class="title" fill="#9a3412">SES</text>
+  <text x="500" y="495" text-anchor="middle" class="sub" fill="#c2410c">Transactional email</text>
+
+  <rect x="600" y="450" width="200" height="65" rx="8" fill="#fef3c7" stroke="#d97706" class="layer"/>
+  <text x="700" y="475" text-anchor="middle" class="title" fill="#92400e">SQS + Dead-Letter Queue</text>
+  <text x="700" y="495" text-anchor="middle" class="sub" fill="#b45309">Async with retry</text>
+
+  <rect x="755" y="535" width="120" height="55" rx="8" fill="#fef3c7" stroke="#d97706" class="layer"/>
+  <text x="815" y="557" text-anchor="middle" class="title" fill="#92400e">EventBridge</text>
+  <text x="815" y="575" text-anchor="middle" class="sub" fill="#b45309">cron(0 9 * * ? *)</text>
+
+  <!-- Cross-cutting -->
+  <rect x="40" y="620" width="820" height="80" rx="8" fill="#f9fafb" stroke="#9ca3af" stroke-dasharray="6 4" class="layer"/>
+  <text x="450" y="644" text-anchor="middle" class="title">Cross-cutting concerns</text>
+  <text x="450" y="664" text-anchor="middle" class="sub">SSM Parameter Store (Cognito IDs, SQS ARNs, Mongo URI) · CloudWatch Logs · per-function IAM roles</text>
+  <text x="450" y="682" text-anchor="middle" class="sub">GitHub Actions CI/CD with path-filtered per-service deploys</text>
+</svg>

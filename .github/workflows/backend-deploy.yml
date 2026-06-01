@@ -1,0 +1,111 @@
+# ============================================================================
+# backend-deploy.yml
+# ----------------------------------------------------------------------------
+# Auto-deploys whichever backend microservices have changed on push to main.
+# Each service has its own job with a `paths:` filter so we don't redeploy
+# things that didn't change. The reusable workflow does the actual work.
+# ============================================================================
+name: Backend deploy
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Stage to deploy'
+        type: string
+        default: dev
+
+jobs:
+  # --- detect-changes: figures out which services were touched ---------------
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      auth:          ${{ steps.filter.outputs.auth }}
+      events:        ${{ steps.filter.outputs.events }}
+      registrations: ${{ steps.filter.outputs.registrations }}
+      files:         ${{ steps.filter.outputs.files }}
+      notifications: ${{ steps.filter.outputs.notifications }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Each filter watches its own service folder PLUS the shared/ folder
+          # (because shared code is bundled into each service's package).
+          filters: |
+            auth:
+              - 'backend/services/auth-service/**'
+              - 'backend/shared/**'
+            events:
+              - 'backend/services/events-service/**'
+              - 'backend/shared/**'
+            registrations:
+              - 'backend/services/registrations-service/**'
+              - 'backend/shared/**'
+            files:
+              - 'backend/services/files-service/**'
+              - 'backend/shared/**'
+            notifications:
+              - 'backend/services/notifications-service/**'
+              - 'backend/shared/**'
+
+  # --- one job per service, gated by the filter -----------------------------
+  # The dependency order matters on FIRST deploy: auth must exist before
+  # events/registrations because they read SSM params auth publishes. After
+  # the first full deploy, services can deploy in any order.
+  deploy-auth:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.auth == 'true'
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service: auth-service
+      stage: ${{ inputs.stage || 'dev' }}
+    secrets: inherit
+
+  deploy-notifications:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.notifications == 'true'
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service: notifications-service
+      stage: ${{ inputs.stage || 'dev' }}
+    secrets: inherit
+
+  deploy-files:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.files == 'true'
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service: files-service
+      stage: ${{ inputs.stage || 'dev' }}
+    secrets: inherit
+
+  deploy-events:
+    needs: [detect-changes, deploy-auth]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.events == 'true' &&
+      (needs.deploy-auth.result == 'success' || needs.deploy-auth.result == 'skipped')
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service: events-service
+      stage: ${{ inputs.stage || 'dev' }}
+    secrets: inherit
+
+  deploy-registrations:
+    needs: [detect-changes, deploy-auth, deploy-notifications]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.registrations == 'true' &&
+      (needs.deploy-auth.result == 'success'           || needs.deploy-auth.result == 'skipped') &&
+      (needs.deploy-notifications.result == 'success'  || needs.deploy-notifications.result == 'skipped')
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service: registrations-service
+      stage: ${{ inputs.stage || 'dev' }}
+    secrets: inherit

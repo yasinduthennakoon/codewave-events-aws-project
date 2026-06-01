@@ -1,0 +1,94 @@
+# ============================================================================
+# registrations-service/serverless.yml
+# ----------------------------------------------------------------------------
+# Two JWT-protected endpoints:
+#   POST /events/{id}/register   — register the calling user for an event
+#   GET  /my-registrations       — list everything the calling user registered for
+#
+# When a user registers, this service:
+#   1. Writes the registration to MongoDB.
+#   2. Sends an SQS message → notifications-service picks it up & emails them.
+# ============================================================================
+service: cloudwave-registrations
+
+frameworkVersion: '3'
+
+custom:
+  cognitoUserPoolId:    ${ssm:/cloudwave/${self:provider.stage}/cognito/userPoolId}
+  cognitoClientId:      ${ssm:/cloudwave/${self:provider.stage}/cognito/clientId}
+  registrationQueueArn: ${ssm:/cloudwave/${self:provider.stage}/sqs/registrationQueueArn}
+  registrationQueueUrl: ${ssm:/cloudwave/${self:provider.stage}/sqs/registrationQueueUrl}
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ap-southeast-1
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 10
+  logRetentionInDays: 14
+
+  environment:
+    STAGE: ${self:provider.stage}
+    # The SQS queue URL is injected so the producer Lambda doesn't have to
+    # look it up at runtime.
+    REGISTRATION_QUEUE_URL: ${self:custom.registrationQueueUrl}
+
+  iam:
+    role:
+      statements:
+        # Read Mongo URI from SSM
+        - Effect: Allow
+          Action:
+            - ssm:GetParameter
+          Resource:
+            - arn:aws:ssm:${self:provider.region}:*:parameter/cloudwave/${self:provider.stage}/*
+        - Effect: Allow
+          Action:
+            - kms:Decrypt
+          Resource: '*'
+        # Send messages to the SQS queue owned by notifications-service
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+          Resource: ${self:custom.registrationQueueArn}
+
+  httpApi:
+    cors:
+      allowedOrigins: ['*']
+      allowedHeaders: ['Content-Type', 'Authorization']
+      allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    authorizers:
+      cognitoAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${self:custom.cognitoUserPoolId}
+        audience:
+          - ${self:custom.cognitoClientId}
+
+functions:
+  registerForEvent:
+    handler: handlers/register.handler
+    events:
+      - httpApi:
+          method: POST
+          path: /events/{id}/register
+          authorizer:
+            name: cognitoAuthorizer
+
+  myRegistrations:
+    handler: handlers/list.handler
+    events:
+      - httpApi:
+          method: GET
+          path: /my-registrations
+          authorizer:
+            name: cognitoAuthorizer
+
+package:
+  patterns:
+    - '!**'
+    - 'handlers/**'
+    - '../../shared/**'
+    - 'node_modules/**'
+    - 'package.json'

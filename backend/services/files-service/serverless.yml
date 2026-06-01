@@ -1,0 +1,169 @@
+# ============================================================================
+# files-service/serverless.yml
+# ----------------------------------------------------------------------------
+# Owns the S3 bucket where event banners/documents are stored, plus a
+# CloudFront distribution that serves them globally. Provides ONE HTTP
+# endpoint that mints a pre-signed PUT URL — the browser then uploads the
+# file directly to S3, bypassing Lambda entirely.
+#
+# Pattern: pre-signed URL = "temporary scoped permission to PUT one file".
+#   - No bytes ever flow through Lambda → fast & cheap
+#   - URL expires after 5 minutes → minimal attack window
+# ============================================================================
+service: cloudwave-files
+
+frameworkVersion: '3'
+
+custom:
+  cognitoUserPoolId: ${ssm:/cloudwave/${self:provider.stage}/cognito/userPoolId}
+  cognitoClientId:   ${ssm:/cloudwave/${self:provider.stage}/cognito/clientId}
+  bucketName:        cloudwave-uploads-${self:provider.stage}-${aws:accountId}
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ap-southeast-1
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 10
+  logRetentionInDays: 14
+
+  environment:
+    STAGE: ${self:provider.stage}
+    UPLOADS_BUCKET: ${self:custom.bucketName}
+    # CloudFront domain (filled by CFN; published to SSM after deploy)
+    CLOUDFRONT_DOMAIN: !GetAtt CloudFrontDistribution.DomainName
+
+  iam:
+    role:
+      statements:
+        # Mint pre-signed URLs (signing happens in-process; needs s3:PutObject on the bucket)
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+          Resource: arn:aws:s3:::${self:custom.bucketName}/*
+
+  httpApi:
+    cors:
+      allowedOrigins: ['*']
+      allowedHeaders: ['Content-Type', 'Authorization']
+      allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    authorizers:
+      cognitoAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${self:custom.cognitoUserPoolId}
+        audience:
+          - ${self:custom.cognitoClientId}
+
+functions:
+  presignedUrl:
+    handler: handlers/presignedUrl.handler
+    description: Returns a pre-signed S3 PUT URL for direct browser upload
+    events:
+      - httpApi:
+          method: POST
+          path: /files/presigned-url
+          authorizer:
+            name: cognitoAuthorizer
+
+resources:
+  Resources:
+
+    # --- S3 Bucket ---------------------------------------------------------
+    # Block ALL public access. The bucket is read-through-CloudFront only.
+    UploadsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.bucketName}
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: false   # we attach a bucket policy below for CF OAC
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: false
+        # CORS so the BROWSER can PUT directly to the pre-signed URL.
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins: ['*']
+              AllowedMethods: ['PUT', 'GET', 'HEAD']
+              AllowedHeaders: ['*']
+              MaxAge: 3000
+
+    # --- CloudFront Origin Access Control -----------------------------------
+    # OAC is the modern replacement for Origin Access Identity (OAI). It
+    # signs CF→S3 requests with SigV4, so the bucket can stay private.
+    CloudFrontOAC:
+      Type: AWS::CloudFront::OriginAccessControl
+      Properties:
+        OriginAccessControlConfig:
+          Name: cloudwave-oac-${self:provider.stage}
+          OriginAccessControlOriginType: s3
+          SigningBehavior: always
+          SigningProtocol: sigv4
+
+    # --- CloudFront Distribution -------------------------------------------
+    CloudFrontDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Enabled: true
+          DefaultCacheBehavior:
+            TargetOriginId: s3UploadsOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: ['GET', 'HEAD']
+            CachedMethods:  ['GET', 'HEAD']
+            Compress: true
+            # AWS-managed cache policy "CachingOptimized"
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          Origins:
+            - Id: s3UploadsOrigin
+              DomainName: !GetAtt UploadsBucket.RegionalDomainName
+              S3OriginConfig: {}
+              OriginAccessControlId: !GetAtt CloudFrontOAC.Id
+          PriceClass: PriceClass_100   # cheapest: NA + EU edges only
+
+    # --- Bucket Policy: allow only THIS CloudFront distribution -----------
+    UploadsBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref UploadsBucket
+        PolicyDocument:
+          Statement:
+            - Sid: AllowCloudFrontServicePrincipal
+              Effect: Allow
+              Principal:
+                Service: cloudfront.amazonaws.com
+              Action: s3:GetObject
+              Resource: !Sub 'arn:aws:s3:::${UploadsBucket}/*'
+              Condition:
+                StringEquals:
+                  AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+    # --- SSM Parameters: publish for other services / the frontend ----------
+    SsmBucketName:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /cloudwave/${self:provider.stage}/s3/uploadsBucket
+        Type: String
+        Value: !Ref UploadsBucket
+
+    SsmCloudFrontDomain:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /cloudwave/${self:provider.stage}/cloudfront/domain
+        Type: String
+        Value: !GetAtt CloudFrontDistribution.DomainName
+
+  Outputs:
+    UploadsBucket:
+      Value: !Ref UploadsBucket
+    CloudFrontDomain:
+      Value: !GetAtt CloudFrontDistribution.DomainName
+
+package:
+  patterns:
+    - '!**'
+    - 'handlers/**'
+    - '../../shared/**'
+    - 'node_modules/**'
+    - 'package.json'

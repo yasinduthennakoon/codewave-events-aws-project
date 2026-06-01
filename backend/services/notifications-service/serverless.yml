@@ -1,0 +1,152 @@
+# ============================================================================
+# notifications-service/serverless.yml
+# ----------------------------------------------------------------------------
+# This stack is the showcase for ASYNC AWS patterns:
+#
+#   1. SQS queue (RegistrationQueue) — other services PUT messages on it when
+#      a user registers for an event. A Lambda here consumes and sends emails.
+#
+#   2. EventBridge scheduled rule — fires DAILY and invokes a Lambda that
+#      finds tomorrow's events and emails reminders to registered users.
+#
+# This service has NO HTTP endpoints — it's event-driven only.
+# ============================================================================
+service: cloudwave-notifications
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ap-southeast-1
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 30
+  logRetentionInDays: 14
+
+  environment:
+    STAGE: ${self:provider.stage}
+    # The SES sender address (must be verified in SES; we keep it in SSM
+    # so it's easy to change without redeploying.)
+    FROM_EMAIL: ${ssm:/cloudwave/${self:provider.stage}/ses/fromEmail}
+
+  iam:
+    role:
+      statements:
+        # Read parameters (Mongo URI, etc.)
+        - Effect: Allow
+          Action:
+            - ssm:GetParameter
+          Resource:
+            - arn:aws:ssm:${self:provider.region}:*:parameter/cloudwave/${self:provider.stage}/*
+        - Effect: Allow
+          Action:
+            - kms:Decrypt
+          Resource: '*'
+        # Send email via SES
+        - Effect: Allow
+          Action:
+            - ses:SendEmail
+            - ses:SendRawEmail
+          Resource: '*'
+
+functions:
+
+  # --------------------------------------------------------------------------
+  # processRegistrationQueue
+  # Consumes messages from the SQS queue. Each message represents one event
+  # registration. The handler sends a confirmation email to the registrant.
+  # --------------------------------------------------------------------------
+  processRegistrationQueue:
+    handler: handlers/processRegistrationQueue.handler
+    description: SQS consumer — sends registration confirmation emails
+    events:
+      - sqs:
+          arn: !GetAtt RegistrationQueue.Arn
+          batchSize: 5
+          # If processing fails, message goes back to the queue and is retried.
+          # After maxReceiveCount attempts it lands in the DLQ (defined below).
+
+  # --------------------------------------------------------------------------
+  # sendReminders
+  # Triggered by EventBridge every morning. Finds events happening tomorrow
+  # and emails everyone registered for them.
+  # --------------------------------------------------------------------------
+  sendReminders:
+    handler: handlers/sendReminders.handler
+    description: EventBridge-scheduled job — sends reminder emails for tomorrow's events
+    events:
+      - schedule:
+          # cron format: minute hour day-of-month month day-of-week year
+          # 09:00 UTC every day. Change to suit your timezone.
+          rate: cron(0 9 * * ? *)
+          enabled: true
+          description: 'Daily 09:00 UTC — sends reminders for events scheduled tomorrow'
+
+resources:
+  Resources:
+
+    # --- SQS Queue (main) ----------------------------------------------------
+    RegistrationQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: cloudwave-registrations-${self:provider.stage}
+        VisibilityTimeout: 60       # how long a consumer "owns" a message
+        MessageRetentionPeriod: 345600   # 4 days
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt RegistrationDLQ.Arn
+          maxReceiveCount: 3        # after 3 failed attempts → DLQ
+
+    # --- SQS Dead-Letter Queue ----------------------------------------------
+    # Failed messages end up here for inspection — never lost.
+    RegistrationDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: cloudwave-registrations-dlq-${self:provider.stage}
+        MessageRetentionPeriod: 1209600  # 14 days
+
+    # --- SQS Queue Policy ---------------------------------------------------
+    # Allow other services (the registrations-service Lambda) to send messages
+    # to this queue. We grant SendMessage to the same AWS account.
+    RegistrationQueuePolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - !Ref RegistrationQueue
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+              Action: sqs:SendMessage
+              Resource: !GetAtt RegistrationQueue.Arn
+
+    # --- SSM Parameters: publish queue ARN/URL for other services -----------
+    SsmRegistrationQueueArn:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /cloudwave/${self:provider.stage}/sqs/registrationQueueArn
+        Type: String
+        Value: !GetAtt RegistrationQueue.Arn
+
+    SsmRegistrationQueueUrl:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /cloudwave/${self:provider.stage}/sqs/registrationQueueUrl
+        Type: String
+        Value: !Ref RegistrationQueue
+
+  Outputs:
+    RegistrationQueueUrl:
+      Value: !Ref RegistrationQueue
+    RegistrationQueueArn:
+      Value: !GetAtt RegistrationQueue.Arn
+
+package:
+  patterns:
+    - '!**'
+    - 'handlers/**'
+    - '../../shared/**'
+    - 'node_modules/**'
+    - 'package.json'

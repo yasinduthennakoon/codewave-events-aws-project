@@ -1,0 +1,18 @@
+{
+  "name": "@cloudwave/files-service",
+  "version": "1.0.0",
+  "private": true,
+  "main": "handlers/presignedUrl.js",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "remove": "serverless remove",
+    "logs": "serverless logs -f"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0"
+  },
+  "devDependencies": {
+    "serverless": "^3.39.0"
+  }
+}

@@ -1,0 +1,110 @@
+# ============================================================================
+# events-service/serverless.yml
+# ----------------------------------------------------------------------------
+# Event CRUD against MongoDB. GET endpoints are public; POST/PUT/DELETE are
+# protected by the Cognito JWT authorizer (configured on the HTTP API).
+# ============================================================================
+service: cloudwave-events
+
+frameworkVersion: '3'
+
+# Resolve Cognito IDs published by auth-service via SSM.
+custom:
+  cognitoUserPoolId:  ${ssm:/cloudwave/${self:provider.stage}/cognito/userPoolId}
+  cognitoClientId:    ${ssm:/cloudwave/${self:provider.stage}/cognito/clientId}
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ap-southeast-1
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 10
+  logRetentionInDays: 14
+
+  environment:
+    STAGE: ${self:provider.stage}
+
+  # We read the Mongo URI from SSM at runtime → need ssm:GetParameter + KMS decrypt.
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - ssm:GetParameter
+          Resource:
+            - arn:aws:ssm:${self:provider.region}:*:parameter/cloudwave/${self:provider.stage}/*
+        - Effect: Allow
+          Action:
+            - kms:Decrypt
+          Resource: '*'   # the default SSM KMS key — scope down in production
+
+  # HTTP API CORS + JWT authorizer (the killer feature of HTTP API).
+  # The authorizer is defined ONCE here, then referenced by name on each route.
+  httpApi:
+    cors:
+      allowedOrigins:    ['*']
+      allowedHeaders:    ['Content-Type', 'Authorization']
+      allowedMethods:    ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    authorizers:
+      cognitoAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        # Cognito publishes a JWKS at this URL; API Gateway uses it to validate
+        # incoming JWTs WITHOUT calling any of our Lambdas.
+        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${self:custom.cognitoUserPoolId}
+        audience:
+          - ${self:custom.cognitoClientId}
+
+functions:
+  # ----------------- PUBLIC -------------------------------------------------
+  listEvents:
+    handler: handlers/list.handler
+    events:
+      - httpApi:
+          method: GET
+          path: /events
+          # no `authorizer` key → endpoint is public
+
+  getEvent:
+    handler: handlers/get.handler
+    events:
+      - httpApi:
+          method: GET
+          path: /events/{id}
+
+  # ----------------- AUTHENTICATED ------------------------------------------
+  createEvent:
+    handler: handlers/create.handler
+    events:
+      - httpApi:
+          method: POST
+          path: /events
+          authorizer:
+            name: cognitoAuthorizer
+
+  updateEvent:
+    handler: handlers/update.handler
+    events:
+      - httpApi:
+          method: PUT
+          path: /events/{id}
+          authorizer:
+            name: cognitoAuthorizer
+
+  deleteEvent:
+    handler: handlers/delete.handler
+    events:
+      - httpApi:
+          method: DELETE
+          path: /events/{id}
+          authorizer:
+            name: cognitoAuthorizer
+
+package:
+  patterns:
+    - '!**'
+    - 'handlers/**'
+    - '../../shared/**'
+    - 'node_modules/**'
+    - 'package.json'

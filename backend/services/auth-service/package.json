@@ -1,0 +1,17 @@
+{
+  "name": "@cloudwave/auth-service",
+  "version": "1.0.0",
+  "private": true,
+  "main": "handlers/register.js",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "remove": "serverless remove",
+    "logs": "serverless logs -f"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.600.0"
+  },
+  "devDependencies": {
+    "serverless": "^3.39.0"
+  }
+}
