@@ -12,6 +12,7 @@ frameworkVersion: '3'
 custom:
   cognitoUserPoolId:  ${ssm:/cloudwave/${self:provider.stage}/cognito/userPoolId}
   cognitoClientId:    ${ssm:/cloudwave/${self:provider.stage}/cognito/clientId}
+  httpApiId:          ${ssm:/cloudwave/${self:provider.stage}/httpApi/id}
 
 provider:
   name: aws
@@ -42,10 +43,7 @@ provider:
   # HTTP API CORS + JWT authorizer (the killer feature of HTTP API).
   # The authorizer is defined ONCE here, then referenced by name on each route.
   httpApi:
-    cors:
-      allowedOrigins:    ['*']
-      allowedHeaders:    ['Content-Type', 'Authorization']
-      allowedMethods:    ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    id: ${self:custom.httpApiId}
     authorizers:
       cognitoAuthorizer:
         type: jwt

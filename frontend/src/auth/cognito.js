@@ -7,7 +7,7 @@
 // additional business logic before or after each auth step.
 // ============================================================================
 
-const BASE = import.meta.env.VITE_API_AUTH;
+const BASE = import.meta.env.VITE_API_BASE;
 
 // Shared POST helper — mirrors the pattern in api/client.js.
 async function post(path, body) {

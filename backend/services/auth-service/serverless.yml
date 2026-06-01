@@ -159,6 +159,15 @@ resources:
         Type: String
         Value: !Ref CognitoUserPoolClient
 
+    # Publish the shared HTTP API ID so other services can attach routes to it
+    # instead of creating their own API Gateways.
+    SsmHttpApiId:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /cloudwave/${self:provider.stage}/httpApi/id
+        Type: String
+        Value: !Ref HttpApi
+
   Outputs:
     UserPoolId:
       Value: !Ref CognitoUserPool

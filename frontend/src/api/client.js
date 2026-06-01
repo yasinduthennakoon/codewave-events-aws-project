@@ -1,17 +1,12 @@
 // ============================================================================
 // api/client.js
 // ----------------------------------------------------------------------------
-// Each microservice has its OWN HTTP API endpoint (true microservice isolation),
-// so we keep one base URL per service. The functions here pick the right base
-// per call and inject the JWT for authenticated requests.
+// All microservices share one API Gateway, so there is a single base URL.
+// The functions here build the full URL per route and inject the JWT for
+// authenticated requests.
 // ============================================================================
 
-const BASES = {
-  auth:          import.meta.env.VITE_API_AUTH,
-  events:        import.meta.env.VITE_API_EVENTS,
-  registrations: import.meta.env.VITE_API_REGISTRATIONS,
-  files:         import.meta.env.VITE_API_FILES,
-};
+const BASE = import.meta.env.VITE_API_BASE;
 
 function getToken() {
   try {
@@ -22,7 +17,7 @@ function getToken() {
   }
 }
 
-async function request(service, path, { method = 'GET', body, auth = false } = {}) {
+async function request(path, { method = 'GET', body, auth = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth) {
     const token = getToken();
@@ -30,7 +25,7 @@ async function request(service, path, { method = 'GET', body, auth = false } = {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASES[service]}${path}`, {
+  const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
@@ -43,23 +38,23 @@ async function request(service, path, { method = 'GET', body, auth = false } = {
 
 // ---- Events ----------------------------------------------------------------
 export const eventsApi = {
-  list:   ()           => request('events', '/events'),
-  get:    (id)         => request('events', `/events/${id}`),
-  create: (body)       => request('events', '/events',         { method: 'POST',   body, auth: true }),
-  update: (id, body)   => request('events', `/events/${id}`,   { method: 'PUT',    body, auth: true }),
-  remove: (id)         => request('events', `/events/${id}`,   { method: 'DELETE',       auth: true }),
+  list:   ()           => request('/events'),
+  get:    (id)         => request(`/events/${id}`),
+  create: (body)       => request('/events',       { method: 'POST',   body, auth: true }),
+  update: (id, body)   => request(`/events/${id}`, { method: 'PUT',    body, auth: true }),
+  remove: (id)         => request(`/events/${id}`, { method: 'DELETE',       auth: true }),
 };
 
 // ---- Registrations ---------------------------------------------------------
 export const registrationsApi = {
-  registerFor: (eventId) => request('registrations', `/events/${eventId}/register`, { method: 'POST', auth: true }),
-  mine:        ()        => request('registrations', '/my-registrations',                              { auth: true }),
+  registerFor: (eventId) => request(`/events/${eventId}/register`, { method: 'POST', auth: true }),
+  mine:        ()        => request('/my-registrations',           { auth: true }),
 };
 
 // ---- Files -----------------------------------------------------------------
 export const filesApi = {
   presignedUrl: (filename, contentType) =>
-    request('files', '/files/presigned-url', {
+    request('/files/presigned-url', {
       method: 'POST',
       body: { filename, contentType },
       auth: true,

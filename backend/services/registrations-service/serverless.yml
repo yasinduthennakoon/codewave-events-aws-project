@@ -18,6 +18,7 @@ custom:
   cognitoClientId:      ${ssm:/cloudwave/${self:provider.stage}/cognito/clientId}
   registrationQueueArn: ${ssm:/cloudwave/${self:provider.stage}/sqs/registrationQueueArn}
   registrationQueueUrl: ${ssm:/cloudwave/${self:provider.stage}/sqs/registrationQueueUrl}
+  httpApiId:            ${ssm:/cloudwave/${self:provider.stage}/httpApi/id}
 
 provider:
   name: aws
@@ -54,10 +55,7 @@ provider:
           Resource: ${self:custom.registrationQueueArn}
 
   httpApi:
-    cors:
-      allowedOrigins: ['*']
-      allowedHeaders: ['Content-Type', 'Authorization']
-      allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    id: ${self:custom.httpApiId}
     authorizers:
       cognitoAuthorizer:
         type: jwt

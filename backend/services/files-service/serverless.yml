@@ -18,6 +18,7 @@ custom:
   cognitoUserPoolId: ${ssm:/cloudwave/${self:provider.stage}/cognito/userPoolId}
   cognitoClientId:   ${ssm:/cloudwave/${self:provider.stage}/cognito/clientId}
   bucketName:        cloudwave-uploads-${self:provider.stage}-${aws:accountId}
+  httpApiId:         ${ssm:/cloudwave/${self:provider.stage}/httpApi/id}
 
 provider:
   name: aws
@@ -44,10 +45,7 @@ provider:
           Resource: arn:aws:s3:::${self:custom.bucketName}/*
 
   httpApi:
-    cors:
-      allowedOrigins: ['*']
-      allowedHeaders: ['Content-Type', 'Authorization']
-      allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    id: ${self:custom.httpApiId}
     authorizers:
       cognitoAuthorizer:
         type: jwt
