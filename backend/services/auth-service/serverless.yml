@@ -168,6 +168,16 @@ resources:
         Type: String
         Value: !Ref HttpApi
 
+    # Publish the JWT authorizer ID so consuming services can reference it
+    # by ID — Serverless Framework does not allow defining authorizers on an
+    # externally-provided HTTP API, so they must use the ID directly.
+    SsmHttpApiAuthorizerId:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /cloudwave/${self:provider.stage}/httpApi/authorizerId
+        Type: String
+        Value: !Ref HttpApiAuthorizerCognitoAuthorizer
+
   Outputs:
     UserPoolId:
       Value: !Ref CognitoUserPool

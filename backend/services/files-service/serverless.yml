@@ -15,10 +15,9 @@ service: cloudwave-files
 frameworkVersion: '3'
 
 custom:
-  cognitoUserPoolId: ${ssm:/cloudwave/${self:provider.stage}/cognito/userPoolId}
-  cognitoClientId:   ${ssm:/cloudwave/${self:provider.stage}/cognito/clientId}
-  bucketName:        cloudwave-uploads-${self:provider.stage}-${aws:accountId}
-  httpApiId:         ${ssm:/cloudwave/${self:provider.stage}/httpApi/id}
+  bucketName:          cloudwave-uploads-${self:provider.stage}-${aws:accountId}
+  httpApiId:           ${ssm:/cloudwave/${self:provider.stage}/httpApi/id}
+  httpApiAuthorizerId: ${ssm:/cloudwave/${self:provider.stage}/httpApi/authorizerId}
 
 provider:
   name: aws
@@ -46,13 +45,6 @@ provider:
 
   httpApi:
     id: ${self:custom.httpApiId}
-    authorizers:
-      cognitoAuthorizer:
-        type: jwt
-        identitySource: $request.header.Authorization
-        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${self:custom.cognitoUserPoolId}
-        audience:
-          - ${self:custom.cognitoClientId}
 
 functions:
   presignedUrl:
@@ -63,7 +55,7 @@ functions:
           method: POST
           path: /files/presigned-url
           authorizer:
-            name: cognitoAuthorizer
+            id: ${self:custom.httpApiAuthorizerId}
 
 resources:
   Resources:

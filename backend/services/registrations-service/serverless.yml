@@ -14,11 +14,10 @@ service: cloudwave-registrations
 frameworkVersion: '3'
 
 custom:
-  cognitoUserPoolId:    ${ssm:/cloudwave/${self:provider.stage}/cognito/userPoolId}
-  cognitoClientId:      ${ssm:/cloudwave/${self:provider.stage}/cognito/clientId}
   registrationQueueArn: ${ssm:/cloudwave/${self:provider.stage}/sqs/registrationQueueArn}
   registrationQueueUrl: ${ssm:/cloudwave/${self:provider.stage}/sqs/registrationQueueUrl}
   httpApiId:            ${ssm:/cloudwave/${self:provider.stage}/httpApi/id}
+  httpApiAuthorizerId:  ${ssm:/cloudwave/${self:provider.stage}/httpApi/authorizerId}
 
 provider:
   name: aws
@@ -56,13 +55,6 @@ provider:
 
   httpApi:
     id: ${self:custom.httpApiId}
-    authorizers:
-      cognitoAuthorizer:
-        type: jwt
-        identitySource: $request.header.Authorization
-        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${self:custom.cognitoUserPoolId}
-        audience:
-          - ${self:custom.cognitoClientId}
 
 functions:
   registerForEvent:
@@ -72,7 +64,7 @@ functions:
           method: POST
           path: /events/{id}/register
           authorizer:
-            name: cognitoAuthorizer
+            id: ${self:custom.httpApiAuthorizerId}
 
   myRegistrations:
     handler: handlers/list.handler
@@ -81,7 +73,7 @@ functions:
           method: GET
           path: /my-registrations
           authorizer:
-            name: cognitoAuthorizer
+            id: ${self:custom.httpApiAuthorizerId}
 
 package:
   patterns:

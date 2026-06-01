@@ -10,9 +10,8 @@ frameworkVersion: '3'
 
 # Resolve Cognito IDs published by auth-service via SSM.
 custom:
-  cognitoUserPoolId:  ${ssm:/cloudwave/${self:provider.stage}/cognito/userPoolId}
-  cognitoClientId:    ${ssm:/cloudwave/${self:provider.stage}/cognito/clientId}
   httpApiId:          ${ssm:/cloudwave/${self:provider.stage}/httpApi/id}
+  httpApiAuthorizerId: ${ssm:/cloudwave/${self:provider.stage}/httpApi/authorizerId}
 
 provider:
   name: aws
@@ -40,19 +39,10 @@ provider:
             - kms:Decrypt
           Resource: '*'   # the default SSM KMS key — scope down in production
 
-  # HTTP API CORS + JWT authorizer (the killer feature of HTTP API).
-  # The authorizer is defined ONCE here, then referenced by name on each route.
+  # Attach to the shared HTTP API owned by auth-service.
+  # The JWT authorizer is defined there and referenced here by its AWS ID.
   httpApi:
     id: ${self:custom.httpApiId}
-    authorizers:
-      cognitoAuthorizer:
-        type: jwt
-        identitySource: $request.header.Authorization
-        # Cognito publishes a JWKS at this URL; API Gateway uses it to validate
-        # incoming JWTs WITHOUT calling any of our Lambdas.
-        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${self:custom.cognitoUserPoolId}
-        audience:
-          - ${self:custom.cognitoClientId}
 
 functions:
   # ----------------- PUBLIC -------------------------------------------------
@@ -79,7 +69,7 @@ functions:
           method: POST
           path: /events
           authorizer:
-            name: cognitoAuthorizer
+            id: ${self:custom.httpApiAuthorizerId}
 
   updateEvent:
     handler: handlers/update.handler
@@ -88,7 +78,7 @@ functions:
           method: PUT
           path: /events/{id}
           authorizer:
-            name: cognitoAuthorizer
+            id: ${self:custom.httpApiAuthorizerId}
 
   deleteEvent:
     handler: handlers/delete.handler
@@ -97,7 +87,7 @@ functions:
           method: DELETE
           path: /events/{id}
           authorizer:
-            name: cognitoAuthorizer
+            id: ${self:custom.httpApiAuthorizerId}
 
 package:
   patterns:
