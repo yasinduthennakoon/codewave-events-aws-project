@@ -24,17 +24,42 @@ deploy_service() {
 # 1. auth-service — publishes Cognito IDs and the shared HTTP API ID to SSM
 deploy_service "auth-service"
 
-# 2. Seed the JWT authorizer ID into SSM.
+# 2. Ensure the JWT authorizer exists and seed its ID into SSM.
 #    Serverless Framework manages HTTP API authorizers outside CloudFormation,
-#    so their IDs can't be referenced via !Ref. We fetch the ID via AWS CLI.
+#    so their IDs can't be referenced via !Ref. We create (or find) the
+#    authorizer via AWS CLI and store the ID so other services can use it.
 echo ""
-echo "Seeding HTTP API authorizer ID into SSM..."
+echo "Ensuring JWT authorizer exists and seeding ID into SSM..."
+REGION="ap-southeast-1"
 API_ID=$(aws ssm get-parameter \
   --name "/cloudwave/$STAGE/httpApi/id" \
   --query Parameter.Value --output text)
+
 AUTH_ID=$(aws apigatewayv2 get-authorizers \
   --api-id "$API_ID" \
-  --query 'Items[0].AuthorizerId' --output text)
+  --query 'Items[?Name==`cognitoAuthorizer`].AuthorizerId | [0]' \
+  --output text)
+
+if [ "$AUTH_ID" = "None" ] || [ -z "$AUTH_ID" ]; then
+  echo "No authorizer found — creating cognitoAuthorizer..."
+  USER_POOL_ID=$(aws ssm get-parameter \
+    --name "/cloudwave/$STAGE/cognito/userPoolId" \
+    --query Parameter.Value --output text)
+  CLIENT_ID=$(aws ssm get-parameter \
+    --name "/cloudwave/$STAGE/cognito/clientId" \
+    --query Parameter.Value --output text)
+  AUTH_ID=$(aws apigatewayv2 create-authorizer \
+    --api-id "$API_ID" \
+    --authorizer-type JWT \
+    --identity-source '$request.header.Authorization' \
+    --name cognitoAuthorizer \
+    --jwt-configuration "{\"Audience\":[\"$CLIENT_ID\"],\"Issuer\":\"https://cognito-idp.$REGION.amazonaws.com/$USER_POOL_ID\"}" \
+    --query AuthorizerId --output text)
+  echo "Created authorizer: $AUTH_ID"
+else
+  echo "Found existing authorizer: $AUTH_ID"
+fi
+
 aws ssm put-parameter \
   --name "/cloudwave/$STAGE/httpApi/authorizerId" \
   --value "$AUTH_ID" \

@@ -74,7 +74,7 @@ jobs:
   # SSM so the other services can read it at deploy time.
   seed-authorizer-ssm:
     needs: deploy-auth
-    if: needs.deploy-auth.result == 'success'
+    if: always() && (needs.deploy-auth.result == 'success' || needs.deploy-auth.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Configure AWS credentials
@@ -84,19 +84,46 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-southeast-1
 
-      - name: Fetch authorizer ID and store in SSM
+      - name: Ensure JWT authorizer exists and store ID in SSM
         run: |
           STAGE="${{ inputs.stage || 'dev' }}"
+          REGION="ap-southeast-1"
+
           API_ID=$(aws ssm get-parameter \
             --name "/cloudwave/$STAGE/httpApi/id" \
             --query Parameter.Value --output text)
+
+          # Check if the cognitoAuthorizer already exists
           AUTH_ID=$(aws apigatewayv2 get-authorizers \
             --api-id "$API_ID" \
-            --query 'Items[0].AuthorizerId' --output text)
+            --query 'Items[?Name==`cognitoAuthorizer`].AuthorizerId | [0]' \
+            --output text)
+
+          if [ "$AUTH_ID" = "None" ] || [ -z "$AUTH_ID" ]; then
+            echo "No authorizer found — creating cognitoAuthorizer..."
+            USER_POOL_ID=$(aws ssm get-parameter \
+              --name "/cloudwave/$STAGE/cognito/userPoolId" \
+              --query Parameter.Value --output text)
+            CLIENT_ID=$(aws ssm get-parameter \
+              --name "/cloudwave/$STAGE/cognito/clientId" \
+              --query Parameter.Value --output text)
+            AUTH_ID=$(aws apigatewayv2 create-authorizer \
+              --api-id "$API_ID" \
+              --authorizer-type JWT \
+              --identity-source '$request.header.Authorization' \
+              --name cognitoAuthorizer \
+              --jwt-configuration "{\"Audience\":[\"$CLIENT_ID\"],\"Issuer\":\"https://cognito-idp.$REGION.amazonaws.com/$USER_POOL_ID\"}" \
+              --query AuthorizerId --output text)
+            echo "Created authorizer: $AUTH_ID"
+          else
+            echo "Found existing authorizer: $AUTH_ID"
+          fi
+
           aws ssm put-parameter \
             --name "/cloudwave/$STAGE/httpApi/authorizerId" \
             --value "$AUTH_ID" \
             --type String --overwrite
+          echo "Stored authorizer ID $AUTH_ID at /cloudwave/$STAGE/httpApi/authorizerId"
 
   deploy-notifications:
     needs: detect-changes
