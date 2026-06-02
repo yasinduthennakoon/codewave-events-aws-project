@@ -6,8 +6,10 @@
 #   1. SQS queue (RegistrationQueue) — other services PUT messages on it when
 #      a user registers for an event. A Lambda here consumes and sends emails.
 #
-#   2. EventBridge scheduled rule — fires DAILY and invokes a Lambda that
-#      finds tomorrow's events and emails reminders to registered users.
+#   2. EventBridge Scheduler (modern, NOT the legacy EventBridge Rules) —
+#      fires DAILY and invokes a Lambda that finds tomorrow's events and
+#      emails reminders. Uses AWS::Scheduler::Schedule + a dedicated IAM role
+#      (scheduler.amazonaws.com) instead of the old events.amazonaws.com rule.
 #
 # This service has NO HTTP endpoints — it's event-driven only.
 # ============================================================================
@@ -69,19 +71,14 @@ functions:
 
   # --------------------------------------------------------------------------
   # sendReminders
-  # Triggered by EventBridge every morning. Finds events happening tomorrow
-  # and emails everyone registered for them.
+  # Triggered by EventBridge Scheduler every morning (NOT a legacy Rule).
+  # The schedule and its IAM role are defined in the resources section below.
+  # No `events:` block here — the scheduler invokes the Lambda directly via
+  # its own execution role (SchedulerInvokeRole).
   # --------------------------------------------------------------------------
   sendReminders:
     handler: handlers/sendReminders.handler
-    description: EventBridge-scheduled job — sends reminder emails for tomorrow's events
-    events:
-      - schedule:
-          # cron format: minute hour day-of-month month day-of-week year
-          # 09:00 UTC every day. Change to suit your timezone.
-          rate: cron(0 9 * * ? *)
-          enabled: true
-          description: 'Daily 09:00 UTC — sends reminders for events scheduled tomorrow'
+    description: EventBridge Scheduler job — sends reminder emails for tomorrow's events
 
 resources:
   Resources:
@@ -121,6 +118,63 @@ resources:
                 AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
               Action: sqs:SendMessage
               Resource: !GetAtt RegistrationQueue.Arn
+
+    # --- EventBridge Scheduler (modern replacement for EventBridge Rules) ---
+    # AWS::Scheduler::Schedule lives under "Schedules" in the console, not
+    # under "Rules". It uses scheduler.amazonaws.com as the principal and
+    # requires its own IAM role to invoke the target Lambda.
+    SendRemindersSchedule:
+      Type: AWS::Scheduler::Schedule
+      Properties:
+        Name: cloudwave-send-reminders-${self:provider.stage}
+        Description: 'Daily 09:00 UTC — sends reminder emails for tomorrow''s events'
+        # Standard cron — same syntax as legacy rules but lives in the
+        # dedicated scheduler service with timezone and flexible-window support.
+        ScheduleExpression: cron(0 9 * * ? *)
+        ScheduleExpressionTimezone: UTC
+        # OFF = fire at exactly the scheduled time (no flexibility window).
+        # Use FLEXIBLE + MaximumWindowInMinutes if exact timing doesn't matter.
+        FlexibleTimeWindow:
+          Mode: 'OFF'
+        State: ENABLED
+        Target:
+          # SLS convention: function name "sendReminders" → CF logical ID "SendRemindersLambdaFunction"
+          Arn: !GetAtt SendRemindersLambdaFunction.Arn
+          RoleArn: !GetAtt SchedulerInvokeRole.Arn
+
+    # --- IAM Role for EventBridge Scheduler ----------------------------------
+    # The scheduler needs its own role to call lambda:InvokeFunction.
+    # This is separate from the Lambda execution role.
+    SchedulerInvokeRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: cloudwave-scheduler-invoke-${self:provider.stage}
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: scheduler.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: InvokeSendRemindersLambda
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: lambda:InvokeFunction
+                  Resource: !GetAtt SendRemindersLambdaFunction.Arn
+
+    # --- Lambda permission so the scheduler can invoke this function ---------
+    # Without this CloudFormation resource-based policy, the scheduler role
+    # alone is not enough — Lambda also checks the function's own policy.
+    SendRemindersSchedulerPermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        FunctionName: !GetAtt SendRemindersLambdaFunction.Arn
+        Action: lambda:InvokeFunction
+        Principal: scheduler.amazonaws.com
+        SourceArn: !GetAtt SendRemindersSchedule.Arn
 
     # --- SSM Parameters: publish queue ARN/URL for other services -----------
     SsmRegistrationQueueArn:
