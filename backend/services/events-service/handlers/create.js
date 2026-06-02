@@ -6,9 +6,9 @@
 // Body: { title, description, date, bannerUrl? }
 // ============================================================================
 
-const { getDb } = require('../../../shared/db');
-const { getUser } = require('../../../shared/auth');
-const { created, badRequest, unauthorized, serverError } = require('../../../shared/response');
+const { getDb } = require('../shared/db');
+const { getUser } = require('../shared/auth');
+const { created, badRequest, unauthorized, serverError } = require('../shared/response');
 
 module.exports.handler = async (event) => {
   try {

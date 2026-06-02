@@ -19,8 +19,8 @@ const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { randomUUID } = require('crypto');
 
-const { getUser } = require('../../../shared/auth');
-const { ok, badRequest, unauthorized, serverError } = require('../../../shared/response');
+const { getUser } = require('../shared/auth');
+const { ok, badRequest, unauthorized, serverError } = require('../shared/response');
 
 const s3 = new S3Client({});
 

@@ -4,8 +4,8 @@
 // Returns the 100 most recent events. No auth required so anyone can browse.
 // ============================================================================
 
-const { getDb } = require('../../../shared/db');
-const { ok, serverError } = require('../../../shared/response');
+const { getDb } = require('../shared/db');
+const { ok, serverError } = require('../shared/response');
 
 module.exports.handler = async () => {
   try {

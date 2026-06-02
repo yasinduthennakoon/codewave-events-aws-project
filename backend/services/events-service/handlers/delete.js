@@ -3,11 +3,11 @@
 // ============================================================================
 
 const { ObjectId } = require('mongodb');
-const { getDb } = require('../../../shared/db');
-const { getUser } = require('../../../shared/auth');
+const { getDb } = require('../shared/db');
+const { getUser } = require('../shared/auth');
 const {
   ok, notFound, badRequest, unauthorized, forbidden, serverError,
-} = require('../../../shared/response');
+} = require('../shared/response');
 
 module.exports.handler = async (event) => {
   try {

@@ -4,9 +4,9 @@
 // Returns all event registrations for the calling user.
 // ============================================================================
 
-const { getDb } = require('../../../shared/db');
-const { getUser } = require('../../../shared/auth');
-const { ok, unauthorized, serverError } = require('../../../shared/response');
+const { getDb } = require('../shared/db');
+const { getUser } = require('../shared/auth');
+const { ok, unauthorized, serverError } = require('../shared/response');
 
 module.exports.handler = async (event) => {
   try {

@@ -16,11 +16,11 @@
 const { ObjectId } = require('mongodb');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 
-const { getDb } = require('../../../shared/db');
-const { getUser } = require('../../../shared/auth');
+const { getDb } = require('../shared/db');
+const { getUser } = require('../shared/auth');
 const {
   created, badRequest, notFound, conflict, unauthorized, serverError,
-} = require('../../../shared/response');
+} = require('../shared/response');
 
 const sqs = new SQSClient({});
 

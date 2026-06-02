@@ -15,7 +15,7 @@ const {
   InitiateAuthCommand,
 } = require('@aws-sdk/client-cognito-identity-provider');
 
-const { ok, badRequest, unauthorized, serverError } = require('../../../shared/response');
+const { ok, badRequest, unauthorized, serverError } = require('../shared/response');
 
 const cognito = new CognitoIdentityProviderClient({});
 

@@ -12,7 +12,7 @@ const {
   SignUpCommand,
 } = require('@aws-sdk/client-cognito-identity-provider');
 
-const { ok, badRequest, serverError } = require('../../../shared/response');
+const { ok, badRequest, serverError } = require('../shared/response');
 
 const cognito = new CognitoIdentityProviderClient({});
 

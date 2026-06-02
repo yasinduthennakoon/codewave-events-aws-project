@@ -15,7 +15,7 @@
 // ============================================================================
 
 const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
-const { getDb } = require('../../../shared/db');
+const { getDb } = require('../shared/db');
 
 const ses = new SESClient({});
 

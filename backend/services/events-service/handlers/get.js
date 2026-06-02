@@ -3,8 +3,8 @@
 // ============================================================================
 
 const { ObjectId } = require('mongodb');
-const { getDb } = require('../../../shared/db');
-const { ok, notFound, badRequest, serverError } = require('../../../shared/response');
+const { getDb } = require('../shared/db');
+const { ok, notFound, badRequest, serverError } = require('../shared/response');
 
 module.exports.handler = async (event) => {
   try {
