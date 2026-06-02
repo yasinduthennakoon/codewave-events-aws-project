@@ -3,10 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "description": "Teaching example: serverless event management on AWS",
-  "workspaces": [
-    "backend/services/*",
-    "frontend"
-  ],
   "scripts": {
     "deploy:backend": "bash scripts/deploy-backend.sh",
     "remove:backend": "bash scripts/remove-backend.sh"
